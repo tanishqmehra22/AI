@@ -1,6 +1,6 @@
 import { apiError } from "@/lib/api";
 import { requireApiUser } from "@/lib/auth/api-user";
-import { createOpenAIClient, getChatModel } from "@/lib/ai/client";
+import { createGeminiClient, getChatModel } from "@/lib/ai/client";
 import { recordAiRun } from "@/lib/ai/observability";
 import { retrieveRelevantChunks } from "@/lib/rag/retrieve";
 import { buildRagContext } from "@/lib/rag/context";
@@ -34,29 +34,37 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         let answer = "";
+        let promptTokenCount: number | undefined;
+        let candidatesTokenCount: number | undefined;
         try {
           controller.enqueue(event("conversation", { conversationId: activeConversationId }));
-          const openai = createOpenAIClient();
-          const completion = await openai.chat.completions.create({
+          const ai = createGeminiClient();
+          const contents = [
+            ...(history ?? []).reverse().filter((message) => message.role === "user" || message.role === "assistant").map((message) => ({ role: message.role === "assistant" ? "model" as const : "user" as const, parts: [{ text: message.content }] })),
+            { role: "user" as const, parts: [{ text: input.message }] },
+          ];
+          const result = await ai.models.generateContentStream({
             model: getChatModel(),
-            stream: true,
-            temperature: 0.2,
-            messages: [
-              { role: "system", content: groundedSystemPrompt(buildRagContext(chunks)) },
-              ...(history ?? []).reverse().map((message) => ({ role: message.role === "assistant" ? "assistant" as const : "user" as const, content: message.content })),
-              { role: "user", content: input.message },
-            ],
+            contents,
+            config: {
+              systemInstruction: groundedSystemPrompt(buildRagContext(chunks)),
+              temperature: 0.2,
+            },
           });
-          for await (const part of completion) {
-            const text = part.choices[0]?.delta.content;
+          for await (const chunk of result) {
+            const text = chunk.text;
             if (text) {
               answer += text;
               controller.enqueue(event("text", { text }));
             }
+            if (chunk.usageMetadata) {
+              promptTokenCount = chunk.usageMetadata.promptTokenCount;
+              candidatesTokenCount = chunk.usageMetadata.candidatesTokenCount;
+            }
           }
           await supabase.from("messages").insert({ conversation_id: activeConversationId, user_id: user.id, role: "assistant", content: answer, metadata: { citations } });
           await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", activeConversationId).eq("user_id", user.id);
-          await recordAiRun(supabase, user, { feature: "rag_chat", model: getChatModel(), startedAt, success: true, inputTokens: embeddingUsage.prompt_tokens ?? null });
+          await recordAiRun(supabase, user, { feature: "rag_chat", model: getChatModel(), startedAt, success: true, inputTokens: promptTokenCount ?? embeddingUsage.prompt_tokens ?? null, outputTokens: candidatesTokenCount ?? null });
           controller.enqueue(event("citations", { citations }));
           controller.enqueue(event("done", {}));
         } catch (error) {

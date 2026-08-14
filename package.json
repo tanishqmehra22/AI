@@ -13,6 +13,7 @@
     "eval": "tsx evals/run.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.17.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "clsx": "^2.1.1",
@@ -21,7 +22,6 @@
     "lucide-react": "^1.31.0",
     "mammoth": "^1.12.1",
     "next": "16.3.0",
-    "openai": "^7.4.0",
     "pdf-parse": "^2.4.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",

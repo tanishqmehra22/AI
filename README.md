@@ -29,8 +29,8 @@ Students frequently switch between an LMS, a calendar, random PDFs, and a chatbo
 | Web app | Next.js App Router, React 19, TypeScript (strict) |
 | UI | Tailwind CSS, Lucide icons, responsive server/client components |
 | Auth/data/storage | Supabase Auth, PostgreSQL, Supabase Storage, Row Level Security |
-| Retrieval | OpenAI embeddings, `pgvector`, Supabase RPC similarity search |
-| AI | OpenAI Chat Completions streaming, function tools, JSON mode + Zod |
+| Retrieval | Gemini embeddings, `pgvector`, Supabase RPC similarity search |
+| AI | Gemini streaming generation, function tools, JSON mode + Zod |
 | Documents | `pdf-parse`, Mammoth, JSZip, SheetJS, and text chunks with overlap |
 | Quality | Vitest, TypeScript checks, ESLint, evaluation runner |
 | Deployment | Vercel + Supabase |
@@ -49,7 +49,7 @@ flowchart LR
   A --> P[(PostgreSQL)]
   P --> V[pgvector]
   A --> ST[Supabase Storage]
-  A --> O[OpenAI API]
+  A --> O[Gemini API]
   ST --> D[Study-file processing]
   D --> O
   O --> V
@@ -70,7 +70,7 @@ The assistant system prompt explicitly treats retrieved document text as untrust
 ```mermaid
 sequenceDiagram
   participant Student
-  participant Model as OpenAI model
+  participant Model as Gemini model
   participant API as StudyOS API
   participant DB as Supabase + RLS
   Student->>Model: "Add CS 146 homework due Friday"
@@ -95,7 +95,7 @@ Important tables:
 - `flashcard_sets`, `flashcards`, `study_plans`: generated learning artifacts.
 - `ai_runs`: per-user feature, model, latency, token, success, and error telemetry.
 
-The `document_chunks.embedding` column uses `vector(1536)`, matching the default `text-embedding-3-small` model. An IVFFlat cosine index supports similarity search after data is loaded.
+The `document_chunks.embedding` column uses `vector(1536)`. Gemini's `gemini-embedding-001` model natively supports 3072 dimensions but accepts an `outputDimensionality` override, which is set to 1536 to match the column and keep storage compact. An IVFFlat cosine index supports similarity search after data is loaded.
 
 ## Security
 
@@ -105,7 +105,7 @@ The `document_chunks.embedding` column uses `vector(1536)`, matching the default
 - The documents bucket is private, accepts supported academic file formats, enforces a 15 MB limit, and requires a storage path prefixed with the authenticated user ID.
 - Zod validates form payloads, route requests, tool arguments, IDs, upload metadata, and model-produced structured JSON.
 - `.env*` is ignored except `.env.example`; API keys and service-role keys are never committed.
-- OpenAI and service-role variables are server-only. The service-role client is isolated and not used by normal user paths.
+- Gemini and service-role variables are server-only. The service-role client is isolated and not used by normal user paths.
 
 ## Local development
 
@@ -126,9 +126,9 @@ Fill `.env.local` with project values. Never use the service-role key in a brows
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL, available to browser clients |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key, protected by RLS |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only administrative/background access; not used by standard user routes |
-| `OPENAI_API_KEY` | Server-only key for embeddings and chat |
-| `OPENAI_CHAT_MODEL` | Optional chat model override; defaults to `gpt-4.1-mini` |
-| `OPENAI_EMBEDDING_MODEL` | Optional embedding model override; defaults to `text-embedding-3-small` |
+| `GEMINI_API_KEY` | Server-only key for embeddings and chat; create one free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey), no billing required |
+| `GEMINI_CHAT_MODEL` | Optional chat model override; defaults to `gemini-2.5-flash` |
+| `GEMINI_EMBEDDING_MODEL` | Optional embedding model override; defaults to `gemini-embedding-001` |
 | `NEXT_PUBLIC_APP_URL` | Canonical Vercel URL for metadata, e.g. `https://studyos.vercel.app` |
 
 ## Database setup
@@ -159,13 +159,13 @@ pnpm build
 
 The Vitest suite focuses on input validation, structured output contracts, document chunking, prompt-injection-safe RAG context construction, and the nested-ownership migration. `pnpm eval` runs 15 readable golden evaluation cases using fictional seed material. It reports expected-document retrieval, expected-concept coverage, tool-routing correctness, source/citation checks, and explains that live latency/failure data comes from `ai_runs`.
 
-For a deeper pre-release evaluation, seed test study files in a disposable Supabase project, run the app against a real OpenAI key, and compare retrieved chunks, citations, tool arguments, latency, and failure rate against the cases in `evals/cases.ts`.
+For a deeper pre-release evaluation, seed test study files in a disposable Supabase project, run the app against a real Gemini key, and compare retrieved chunks, citations, tool arguments, latency, and failure rate against the cases in `evals/cases.ts`.
 
 ## Deployment
 
 1. Push this repository to GitHub.
 2. Import it in Vercel as a Next.js project.
-3. Add every variable from `.env.example` in Vercel Project Settings. Keep `OPENAI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` server-only.
+3. Add every variable from `.env.example` in Vercel Project Settings. Keep `GEMINI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` server-only.
 4. Set `NEXT_PUBLIC_APP_URL` to the Vercel production URL.
 5. In Supabase Auth, add the Vercel URL and `/auth/callback` redirect URL.
 6. Deploy and test signup, a private course-file upload, a cited question, and an assignment mutation from a second account to confirm isolation.
@@ -178,6 +178,7 @@ For a deeper pre-release evaluation, seed test study files in a disposable Supab
 - **Page-aware character chunking:** a paragraph/sentence-aware 1,500-character target with 220-character overlap is deterministic and easy to reason about without a tokenizer service.
 - **Validated JSON rather than trusted JSON:** flashcards and plans are parsed with Zod and rejected when malformed; study-plan sessions are additionally filtered to known assignment IDs.
 - **Separate RAG and action modes:** academic questions need retrieved evidence and citations. Mutations need constrained tools. Keeping the flows separate reduces prompt surface area and makes auditing clearer.
+- **Gemini over OpenAI:** the Google Gemini API's free tier (via an AI Studio key, no billing account required) covers chat, streaming, function calling, structured JSON output, and configurable-dimension embeddings — the same capabilities this project needs — at zero cost for portfolio and interview demos. `lib/ai/client.ts` isolates the provider behind `getChatModel`/`embedText`, so swapping to OpenAI or another provider later touches one file, not every route.
 
 ## Future improvements
 

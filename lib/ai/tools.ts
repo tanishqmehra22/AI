@@ -1,4 +1,5 @@
 import "server-only";
+import type { FunctionDeclaration } from "@google/genai";
 import type { User } from "@supabase/supabase-js";
 import { z } from "zod";
 import { addDays, formatISO } from "date-fns";
@@ -13,16 +14,16 @@ const assignmentLookupSchema = z.object({ assignmentId: idSchema });
 const searchDocumentsSchema = z.object({ query: z.string().min(1).max(1_000), courseId: idSchema.optional() });
 const createStudyPlanSchema = z.object({ days: z.coerce.number().int().min(1).max(14).default(7), title: z.string().min(2).max(120).optional() });
 
-export const assistantTools = [
-  { type: "function" as const, function: { name: "getCourses", description: "List the student's courses.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
-  { type: "function" as const, function: { name: "getAssignments", description: "List the student's assignments.", parameters: { type: "object", properties: { courseId: { type: "string" } }, additionalProperties: false } } },
-  { type: "function" as const, function: { name: "getUpcomingAssignments", description: "List incomplete assignments due in the next 14 days.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
-  { type: "function" as const, function: { name: "getOverdueAssignments", description: "List incomplete overdue assignments.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
-  { type: "function" as const, function: { name: "createAssignment", description: "Create a new assignment after extracting a clear title and course.", parameters: { type: "object", properties: { courseId: { type: "string" }, title: { type: "string" }, description: { type: "string" }, dueDate: { type: "string", description: "YYYY-MM-DD" }, priority: { type: "string", enum: ["low", "medium", "high"] }, estimatedHours: { type: "number" } }, required: ["courseId", "title"], additionalProperties: false } } },
-  { type: "function" as const, function: { name: "updateAssignment", description: "Update fields of an existing assignment owned by the student.", parameters: { type: "object", properties: { assignmentId: { type: "string" }, title: { type: "string" }, description: { type: "string" }, dueDate: { type: "string" }, status: { type: "string", enum: ["not_started", "in_progress", "completed"] }, priority: { type: "string", enum: ["low", "medium", "high"] }, estimatedHours: { type: "number" } }, required: ["assignmentId"], additionalProperties: false } } },
-  { type: "function" as const, function: { name: "markAssignmentComplete", description: "Mark an owned assignment complete.", parameters: { type: "object", properties: { assignmentId: { type: "string" } }, required: ["assignmentId"], additionalProperties: false } } },
-  { type: "function" as const, function: { name: "createStudyPlan", description: "Create a simple plan from the student's incomplete assignments.", parameters: { type: "object", properties: { days: { type: "number" }, title: { type: "string" } }, additionalProperties: false } } },
-  { type: "function" as const, function: { name: "searchCourseDocuments", description: "Search the student's uploaded course documents for relevant passages.", parameters: { type: "object", properties: { query: { type: "string" }, courseId: { type: "string" } }, required: ["query"], additionalProperties: false } } },
+export const assistantTools: FunctionDeclaration[] = [
+  { name: "getCourses", description: "List the student's courses.", parametersJsonSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "getAssignments", description: "List the student's assignments.", parametersJsonSchema: { type: "object", properties: { courseId: { type: "string" } }, additionalProperties: false } },
+  { name: "getUpcomingAssignments", description: "List incomplete assignments due in the next 14 days.", parametersJsonSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "getOverdueAssignments", description: "List incomplete overdue assignments.", parametersJsonSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "createAssignment", description: "Create a new assignment after extracting a clear title and course.", parametersJsonSchema: { type: "object", properties: { courseId: { type: "string" }, title: { type: "string" }, description: { type: "string" }, dueDate: { type: "string", description: "YYYY-MM-DD" }, priority: { type: "string", enum: ["low", "medium", "high"] }, estimatedHours: { type: "number" } }, required: ["courseId", "title"], additionalProperties: false } },
+  { name: "updateAssignment", description: "Update fields of an existing assignment owned by the student.", parametersJsonSchema: { type: "object", properties: { assignmentId: { type: "string" }, title: { type: "string" }, description: { type: "string" }, dueDate: { type: "string" }, status: { type: "string", enum: ["not_started", "in_progress", "completed"] }, priority: { type: "string", enum: ["low", "medium", "high"] }, estimatedHours: { type: "number" } }, required: ["assignmentId"], additionalProperties: false } },
+  { name: "markAssignmentComplete", description: "Mark an owned assignment complete.", parametersJsonSchema: { type: "object", properties: { assignmentId: { type: "string" } }, required: ["assignmentId"], additionalProperties: false } },
+  { name: "createStudyPlan", description: "Create a simple plan from the student's incomplete assignments.", parametersJsonSchema: { type: "object", properties: { days: { type: "number" }, title: { type: "string" } }, additionalProperties: false } },
+  { name: "searchCourseDocuments", description: "Search the student's uploaded course documents for relevant passages.", parametersJsonSchema: { type: "object", properties: { query: { type: "string" }, courseId: { type: "string" } }, required: ["query"], additionalProperties: false } },
 ];
 
 function nullable(value: string | undefined) {

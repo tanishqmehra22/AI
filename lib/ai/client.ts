@@ -1,23 +1,34 @@
 import "server-only";
-import OpenAI from "openai";
-import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL } from "@/lib/constants";
+import { GoogleGenAI } from "@google/genai";
+import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from "@/lib/constants";
+
+export interface AiUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+}
 
 export function getChatModel() {
-  return process.env.OPENAI_CHAT_MODEL || DEFAULT_CHAT_MODEL;
+  return process.env.GEMINI_CHAT_MODEL || DEFAULT_CHAT_MODEL;
 }
 
 export function getEmbeddingModel() {
-  return process.env.OPENAI_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
+  return process.env.GEMINI_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
 }
 
-export function createOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OpenAI is not configured. Add OPENAI_API_KEY on the server.");
-  return new OpenAI({ apiKey });
+export function createGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("Gemini is not configured. Add GEMINI_API_KEY on the server.");
+  return new GoogleGenAI({ apiKey });
 }
 
 export async function embedText(input: string) {
-  const openai = createOpenAIClient();
-  const response = await openai.embeddings.create({ model: getEmbeddingModel(), input });
-  return { embedding: response.data[0].embedding, usage: response.usage };
+  const ai = createGeminiClient();
+  const response = await ai.models.embedContent({
+    model: getEmbeddingModel(),
+    contents: [input],
+    config: { outputDimensionality: EMBEDDING_DIMENSIONS },
+  });
+  const embedding = response.embeddings?.[0]?.values;
+  if (!embedding) throw new Error("The embedding model returned no vector.");
+  return { embedding, usage: {} as AiUsage };
 }
