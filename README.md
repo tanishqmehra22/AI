@@ -20,7 +20,7 @@ Students frequently switch between an LMS, a calendar, random PDFs, and a chatbo
 - A task assistant that uses constrained backend tools to list work, create/update assignments, complete assignments, search documents, and create a basic plan.
 - Schema-validated flashcard and study-plan generation with Zod validation before data is persisted.
 - User-private AI observability: request count, success/failure count, latency, and feature breakdown.
-- A 15-case evaluation harness for retrieval/source, concepts, citation-source checks, and tool routing.
+- A 17-case evaluation harness that runs against the live model: retrieval accuracy, concept coverage, refusal on unsupported questions, and multi-turn tool routing.
 
 ## Tech Stack
 
@@ -67,22 +67,30 @@ The assistant system prompt explicitly treats retrieved document text as untrust
 
 ### Controlled agent / tool calling
 
+Mutating tools need record IDs the model does not start with, so `/api/agent` runs a bounded loop (max 5 rounds) rather than a single call. Each round's results are fed back as `functionResponse` parts, letting the model resolve an entity and then act on it.
+
 ```mermaid
 sequenceDiagram
   participant Student
   participant Model as Gemini model
   participant API as StudyOS API
   participant DB as Supabase + RLS
-  Student->>Model: "Add CS 146 homework due Friday"
-  Model->>API: createAssignment(arguments)
+  Student->>Model: "Mark my database homework complete"
+  Model->>API: getAssignments()
+  API->>DB: Ownership-filtered read
+  DB-->>API: Assignments
+  API-->>Model: functionResponse(getAssignments)
+  Model->>API: markAssignmentComplete(assignmentId)
   API->>API: Zod validate + identify session user
   API->>DB: Ownership-filtered mutation
   DB-->>API: Structured result
-  API-->>Model: Tool result
-  Model-->>Student: Accurate confirmation
+  API-->>Model: functionResponse(markAssignmentComplete)
+  Model-->>Student: Confirmation backed by a real tool result
 ```
 
-The model never receives a database connection or SQL execution ability. Every tool is a normal server-side function with a small allowed action set, Zod validation, user identity, and explicit ownership filtering. Destructive delete operations are not exposed as model tools and require UI confirmation.
+The model never receives a database connection or SQL execution ability. Every tool is a normal server-side function with a small allowed action set, Zod validation, user identity, and explicit ownership filtering. Destructive delete operations are not exposed as model tools.
+
+A failing tool returns its error to the model instead of aborting the request, and the system prompt forbids reporting success without a matching tool result — an earlier single-shot design let the model announce a completed assignment that was never actually written.
 
 ## Database schema
 
@@ -157,9 +165,27 @@ pnpm eval
 pnpm build
 ```
 
-The Vitest suite focuses on input validation, structured output contracts, document chunking, prompt-injection-safe RAG context construction, and the nested-ownership migration. `pnpm eval` runs 15 readable golden evaluation cases using fictional seed material. It reports expected-document retrieval, expected-concept coverage, tool-routing correctness, source/citation checks, and explains that live latency/failure data comes from `ai_runs`.
+The Vitest suite focuses on input validation, structured output contracts, document chunking, prompt-injection-safe RAG context construction, Gemini response-schema conversion, and the nested-ownership migration.
 
-For a deeper pre-release evaluation, seed test study files in a disposable Supabase project, run the app against a real Gemini key, and compare retrieved chunks, citations, tool arguments, latency, and failure rate against the cases in `evals/cases.ts`.
+### AI evaluation
+
+`pnpm eval` runs 17 golden cases against the **live model** — nothing is stubbed. `evals/corpus.ts` holds a small fictional lecture corpus; the harness embeds it with the real embedding model, retrieves with real cosine similarity, and answers with the same grounded prompt the app uses. Only *expectations* live in `evals/cases.ts`; retrieved chunks and answers are produced at run time, so a regression in retrieval, prompting, or tool routing turns into a failing case and a non-zero exit code.
+
+| Metric | What it catches |
+| --- | --- |
+| Top-1 expected-document retrieval | Embedding or ranking regressions |
+| Expected-concept coverage | Answers that retrieve correctly but omit the key idea |
+| Refusal when unsupported | Hallucination on material the corpus does not contain |
+| Tool-call routing | The agent picking the wrong tool for an instruction |
+| Tool-argument correctness | Correct tool, missing or malformed arguments |
+| Latency p50 / p95 | Performance drift |
+
+Two design notes worth calling out:
+
+- **Refusal is judged by a second model call**, not keyword matching. Phrasings like "there is no mention of…" and "that isn't covered" vary too much for a substring list, which produced false failures.
+- **Tool cases run multi-turn**, mirroring the production agent loop. `createAssignment` needs a `courseId` the model does not start with, so the correct behaviour is `getCourses → createAssignment`; read tools are answered from a fixture so the chain can proceed.
+
+Per-user latency and failure rates from real usage are recorded separately in `ai_runs` and surfaced on the Settings page.
 
 ## Deployment
 
