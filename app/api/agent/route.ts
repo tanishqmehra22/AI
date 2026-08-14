@@ -1,3 +1,4 @@
+import { type Content } from "@google/genai";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import { requireApiUser } from "@/lib/auth/api-user";
@@ -6,6 +7,19 @@ import { recordAiRun } from "@/lib/ai/observability";
 import { assistantTools, executeAssistantTool } from "@/lib/ai/tools";
 import { agentRequestSchema } from "@/lib/validation";
 
+// Resolving an assignment by name then mutating it takes more than one turn, so
+// the model runs in a loop until it stops calling tools. Capped so a confused
+// model cannot spin indefinitely.
+const MAX_TOOL_ROUNDS = 5;
+
+const SYSTEM_PROMPT = [
+  "You are the StudyOS task assistant. Use tools for current student data and requested mutations.",
+  "Only these tools exist; never invent a tool name or claim to have used one you did not call.",
+  "Never state that an action succeeded unless a tool result you received says so. If a tool returned an error, say plainly that the action failed and why.",
+  "When a request needs a record ID you do not have, call a read tool first, then call the mutating tool in a later step.",
+  "Do not use tools for destructive deletion. Ask for clarification when a course or assignment cannot be resolved.",
+].join(" ");
+
 export async function POST(request: Request) {
   try {
     const { user, supabase } = await requireApiUser();
@@ -13,46 +27,53 @@ export async function POST(request: Request) {
     const startedAt = Date.now();
     const ai = createGeminiClient();
     try {
-      const initial = await withGeminiRetry(() => ai.models.generateContent({
-        model: getChatModel(),
-        contents: [{ role: "user", parts: [{ text: message }] }],
-        config: {
-          systemInstruction: "You are the StudyOS task assistant. Use tools for current student data and requested mutations. Never claim a tool action succeeded unless its result says so. Do not use tools for destructive deletion. Ask for clarification when a course or assignment cannot be resolved.",
-          temperature: 0,
-          tools: [{ functionDeclarations: assistantTools }],
-        },
-      }));
-      const calls = initial.functionCalls ?? [];
-      if (!calls.length) {
-        await recordAiRun(supabase, user, { feature: "agent_tools", model: getChatModel(), startedAt, success: true, inputTokens: initial.usageMetadata?.promptTokenCount, outputTokens: initial.usageMetadata?.candidatesTokenCount });
-        return NextResponse.json({ message: initial.text ?? "I need a little more detail before I can act.", toolCalls: [] });
+      const contents: Content[] = [{ role: "user", parts: [{ text: message }] }];
+      const executed: { name: string; result: unknown }[] = [];
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let reply = "";
+
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        const response = await withGeminiRetry(() => ai.models.generateContent({
+          model: getChatModel(),
+          contents,
+          config: { systemInstruction: SYSTEM_PROMPT, temperature: 0, tools: [{ functionDeclarations: assistantTools }] },
+        }));
+        inputTokens += response.usageMetadata?.promptTokenCount ?? 0;
+        outputTokens += response.usageMetadata?.candidatesTokenCount ?? 0;
+
+        const calls = (response.functionCalls ?? []).filter((call) => call.name);
+        if (!calls.length) {
+          reply = response.text ?? "I need a little more detail before I can act.";
+          break;
+        }
+
+        // Preserve the model's own turn so later rounds keep their tool context.
+        const modelContent = response.candidates?.[0]?.content;
+        contents.push(modelContent ?? { role: "model", parts: calls.map((call) => ({ functionCall: call })) });
+
+        const responseParts = [];
+        for (const call of calls) {
+          const name = call.name as string;
+          let result: unknown;
+          try {
+            result = await executeAssistantTool({ user, supabase }, name, call.args ?? {});
+            executed.push({ name, result });
+          } catch (error) {
+            // Report the failure to the model instead of aborting, so it tells
+            // the student the action failed rather than inventing success.
+            const reason = error instanceof Error ? error.message : "The tool could not complete.";
+            result = { error: reason };
+            executed.push({ name, result });
+          }
+          responseParts.push({ functionResponse: { id: call.id, name, response: { output: result } } });
+        }
+        contents.push({ role: "user", parts: responseParts });
       }
-      const results: { name: string; result: unknown }[] = [];
-      for (const call of calls) {
-        if (!call.name) continue;
-        const result = await executeAssistantTool({ user, supabase }, call.name, call.args ?? {});
-        results.push({ name: call.name, result });
-      }
-      const followUp = await withGeminiRetry(() => ai.models.generateContent({
-        model: getChatModel(),
-        contents: [
-          { role: "user", parts: [{ text: message }] },
-          { role: "user", parts: [{ text: `Tool execution results: ${JSON.stringify(results)}` }] },
-        ],
-        config: {
-          systemInstruction: "Summarize the completed StudyOS tool actions accurately and concisely. If a tool reported no results, say that clearly.",
-          temperature: 0.2,
-        },
-      }));
-      await recordAiRun(supabase, user, {
-        feature: "agent_tools",
-        model: getChatModel(),
-        startedAt,
-        success: true,
-        inputTokens: (initial.usageMetadata?.promptTokenCount ?? 0) + (followUp.usageMetadata?.promptTokenCount ?? 0),
-        outputTokens: (initial.usageMetadata?.candidatesTokenCount ?? 0) + (followUp.usageMetadata?.candidatesTokenCount ?? 0),
-      });
-      return NextResponse.json({ message: followUp.text ?? "Done.", toolCalls: results });
+
+      if (!reply) reply = "I stopped before finishing that request. Please try a smaller step.";
+      await recordAiRun(supabase, user, { feature: "agent_tools", model: getChatModel(), startedAt, success: true, inputTokens, outputTokens });
+      return NextResponse.json({ message: reply, toolCalls: executed });
     } catch (error) {
       const message = error instanceof Error ? error.message : "The task assistant could not complete that action.";
       await recordAiRun(supabase, user, { feature: "agent_tools", model: getChatModel(), startedAt, success: false, errorMessage: message });
