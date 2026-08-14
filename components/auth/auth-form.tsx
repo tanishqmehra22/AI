@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BookOpenCheck, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -12,13 +12,16 @@ export function AuthForm({ mode, configured }: { mode: "login" | "signup"; confi
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const isSubmitting = useRef(false);
   const isSignup = mode === "signup";
   async function submit(formData: FormData) {
+    if (isSubmitting.current) return;
+    isSubmitting.current = true;
     setError(null); setNotice(null); setPending(true);
     const email = String(formData.get("email") ?? "").trim();
     const password = String(formData.get("password") ?? "");
     const fullName = String(formData.get("fullName") ?? "").trim();
-    if (!email || !password || (isSignup && !fullName)) { setError("Complete the required fields."); setPending(false); return; }
+    if (!email || !password || (isSignup && !fullName)) { setError("Complete the required fields."); setPending(false); isSubmitting.current = false; return; }
     const supabase = createSupabaseBrowserClient();
     if (isSignup) {
       const { data, error: signupError } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: `${window.location.origin}/auth/callback` } });
@@ -31,6 +34,7 @@ export function AuthForm({ mode, configured }: { mode: "login" | "signup"; confi
       else { router.replace("/dashboard"); router.refresh(); }
     }
     setPending(false);
+    isSubmitting.current = false;
   }
   return (
     <main className="grid min-h-screen place-items-center bg-[#f6f8f5] px-5 py-10">
