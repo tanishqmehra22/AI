@@ -1,0 +1,4 @@
+-- Development-only fictional data. In an authenticated SQL console run:
+-- select public.seed_studyos_demo();
+-- This function creates CS 146, CS 157A, example assignments, and a conversation
+-- for the currently authenticated user. It is safe to re-run during development.
