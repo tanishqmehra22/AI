@@ -1,6 +1,6 @@
 # StudyOS
 
-StudyOS is an AI-powered academic workspace for university students. It brings course organization, deadline planning, private course PDFs, grounded question-answering, flashcard generation, and controlled task automation into one Next.js application.
+StudyOS is an AI-powered academic workspace for university students. It brings course organization, deadline planning, private course files, grounded question-answering, flashcard generation, and controlled task automation into one Next.js application.
 
 It is designed as a full-stack / AI engineering portfolio project: the UI is intentionally polished, while the underlying implementation demonstrates database modeling, Supabase security, document ingestion, pgvector retrieval, streaming, structured outputs, tools, evaluation, and observability.
 
@@ -15,7 +15,7 @@ Students frequently switch between an LMS, a calendar, random PDFs, and a chatbo
 - Email/password signup, login, logout, session refresh, and protected routes via Supabase Auth.
 - Course CRUD with detail views for related work, documents, chats, and flashcard sets.
 - Assignment CRUD, priority, workload estimates, completion/reopen controls, deadline visibility, and dashboard summaries.
-- Private PDF uploads to Supabase Storage with MIME/size validation, processing states, useful failure messages, page-aware extraction, chunking, and embeddings.
+- Private uploads for PDFs, Word documents, PowerPoint presentations, spreadsheets, CSV, text, and Markdown with MIME/size validation, processing states, text extraction, chunking, and embeddings.
 - Real RAG chat: question embedding → ownership-filtered pgvector search → untrusted context envelope → streaming answer → source citations.
 - A task assistant that uses constrained backend tools to list work, create/update assignments, complete assignments, search documents, and create a basic plan.
 - Schema-validated flashcard and study-plan generation with Zod validation before data is persisted.
@@ -31,7 +31,7 @@ Students frequently switch between an LMS, a calendar, random PDFs, and a chatbo
 | Auth/data/storage | Supabase Auth, PostgreSQL, Supabase Storage, Row Level Security |
 | Retrieval | OpenAI embeddings, `pgvector`, Supabase RPC similarity search |
 | AI | OpenAI Chat Completions streaming, function tools, JSON mode + Zod |
-| Documents | `pdf-parse`, page-aware text chunks with overlap |
+| Documents | `pdf-parse`, Mammoth, JSZip, SheetJS, and text chunks with overlap |
 | Quality | Vitest, TypeScript checks, ESLint, evaluation runner |
 | Deployment | Vercel + Supabase |
 
@@ -50,7 +50,7 @@ flowchart LR
   P --> V[pgvector]
   A --> ST[Supabase Storage]
   A --> O[OpenAI API]
-  ST --> D[PDF processing]
+  ST --> D[Study-file processing]
   D --> O
   O --> V
 ```
@@ -58,7 +58,7 @@ flowchart LR
 ### RAG pipeline
 
 ```text
-Upload PDF → Validate → Store privately → Parse pages → Chunk with overlap
+Upload study file → Validate → Store privately → Extract text → Chunk with overlap
 → Embed chunks → Store in pgvector → Embed question → Retrieve owned chunks
 → Generate a streamed answer → Return citations
 ```
@@ -90,7 +90,7 @@ Important tables:
 
 - `profiles`: account display metadata linked 1:1 to `auth.users`.
 - `courses`, `assignments`: normalized academic workload records.
-- `documents`, `document_chunks`: private PDF metadata and embedding-backed source chunks.
+- `documents`, `document_chunks`: private study-file metadata and embedding-backed source chunks.
 - `conversations`, `messages`: persisted chat history and assistant citation metadata.
 - `flashcard_sets`, `flashcards`, `study_plans`: generated learning artifacts.
 - `ai_runs`: per-user feature, model, latency, token, success, and error telemetry.
@@ -102,7 +102,7 @@ The `document_chunks.embedding` column uses `vector(1536)`, matching the default
 - Every data-owning table has RLS enabled in `supabase/migrations`.
 - Policies restrict rows to `auth.uid()` and the hardening migration verifies ownership of nested parent resources such as courses, documents, conversations, and flashcard sets.
 - Route handlers authenticate on the server and filter mutations with both `id` and `user_id`; frontend visibility is never treated as authorization.
-- The documents bucket is private, accepts PDFs only, enforces a 15 MB limit, and requires a storage path prefixed with the authenticated user ID.
+- The documents bucket is private, accepts supported academic file formats, enforces a 15 MB limit, and requires a storage path prefixed with the authenticated user ID.
 - Zod validates form payloads, route requests, tool arguments, IDs, upload metadata, and model-produced structured JSON.
 - `.env*` is ignored except `.env.example`; API keys and service-role keys are never committed.
 - OpenAI and service-role variables are server-only. The service-role client is isolated and not used by normal user paths.
@@ -159,7 +159,7 @@ pnpm build
 
 The Vitest suite focuses on input validation, structured output contracts, document chunking, prompt-injection-safe RAG context construction, and the nested-ownership migration. `pnpm eval` runs 15 readable golden evaluation cases using fictional seed material. It reports expected-document retrieval, expected-concept coverage, tool-routing correctness, source/citation checks, and explains that live latency/failure data comes from `ai_runs`.
 
-For a deeper pre-release evaluation, seed test PDFs in a disposable Supabase project, run the app against a real OpenAI key, and compare retrieved chunks, citations, tool arguments, latency, and failure rate against the cases in `evals/cases.ts`.
+For a deeper pre-release evaluation, seed test study files in a disposable Supabase project, run the app against a real OpenAI key, and compare retrieved chunks, citations, tool arguments, latency, and failure rate against the cases in `evals/cases.ts`.
 
 ## Deployment
 
@@ -168,7 +168,7 @@ For a deeper pre-release evaluation, seed test PDFs in a disposable Supabase pro
 3. Add every variable from `.env.example` in Vercel Project Settings. Keep `OPENAI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` server-only.
 4. Set `NEXT_PUBLIC_APP_URL` to the Vercel production URL.
 5. In Supabase Auth, add the Vercel URL and `/auth/callback` redirect URL.
-6. Deploy and test signup, a private PDF upload, a cited question, and an assignment mutation from a second account to confirm isolation.
+6. Deploy and test signup, a private course-file upload, a cited question, and an assignment mutation from a second account to confirm isolation.
 
 ## Technical decisions
 
@@ -183,7 +183,7 @@ For a deeper pre-release evaluation, seed test PDFs in a disposable Supabase pro
 
 - Background document jobs with retries, OCR fallback, and per-document progress events.
 - Optional course sharing with explicit roles and revised RLS policies.
-- Citation deep links to page previews in a secure PDF viewer.
+- Citation deep links to secure source previews for pages, slides, and spreadsheet sheets.
 - True streamed tool-call turn handling in the chat UI.
 - Spaced-repetition scheduling and flashcard review analytics.
 - Live CI with a disposable Supabase test project to exercise RLS from two users.

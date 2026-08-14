@@ -1,5 +1,5 @@
 export const APP_NAME = "StudyOS";
-export const MAX_PDF_SIZE_BYTES = 15 * 1024 * 1024;
+export const MAX_DOCUMENT_SIZE_BYTES = 15 * 1024 * 1024;
 export const DEFAULT_CHAT_MODEL = "gpt-4.1-mini";
 export const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 export const MAX_DOCUMENT_CHUNKS = 2_000;

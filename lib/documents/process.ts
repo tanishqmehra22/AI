@@ -2,24 +2,26 @@ import "server-only";
 import { MAX_DOCUMENT_CHUNKS } from "@/lib/constants";
 import { embedText } from "@/lib/ai/client";
 import { chunkPages } from "@/lib/documents/chunk";
-import { extractPdfPages } from "@/lib/documents/extract";
+import { extractDocumentPages } from "@/lib/documents/extract";
+import type { DocumentFormat } from "@/lib/documents/formats";
 
 type Supabase = Awaited<ReturnType<typeof import("@/lib/supabase/server").createSupabaseServerClient>>;
 
-export async function processPdfDocument(input: {
+export async function processDocument(input: {
   supabase: Supabase;
   documentId: string;
   userId: string;
   courseId: string | null;
   bytes: ArrayBuffer;
+  format: DocumentFormat;
 }) {
-  const { supabase, documentId, userId, courseId, bytes } = input;
+  const { supabase, documentId, userId, courseId, bytes, format } = input;
   await supabase.from("documents").update({ processing_status: "processing", processing_error: null }).eq("id", documentId).eq("user_id", userId);
   try {
-    const pages = await extractPdfPages(bytes);
+    const { pages, extraction } = await extractDocumentPages(format, bytes);
     const chunks = chunkPages(pages);
-    if (!chunks.length) throw new Error("No readable text was found in this PDF.");
-    if (chunks.length > MAX_DOCUMENT_CHUNKS) throw new Error("This PDF is too large to process safely. Upload a smaller excerpt.");
+    if (!chunks.length) throw new Error("No readable text was found in this file.");
+    if (chunks.length > MAX_DOCUMENT_CHUNKS) throw new Error("This file is too large to process safely. Upload a smaller excerpt.");
 
     const rows = [];
     for (const chunk of chunks) {
@@ -32,7 +34,7 @@ export async function processPdfDocument(input: {
         chunk_index: chunk.chunkIndex,
         page_number: chunk.pageNumber,
         embedding,
-        metadata: { extraction: "pdf-parse", charCount: chunk.content.length },
+        metadata: { extraction, format, charCount: chunk.content.length },
       });
     }
     const { error: chunksError } = await supabase.from("document_chunks").insert(rows);

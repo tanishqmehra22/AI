@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { apiError, ApiError } from "@/lib/api";
 import { requireApiUser } from "@/lib/auth/api-user";
-import { MAX_PDF_SIZE_BYTES } from "@/lib/constants";
-import { processPdfDocument } from "@/lib/documents/process";
+import { MAX_DOCUMENT_SIZE_BYTES } from "@/lib/constants";
+import { getSupportedDocumentType } from "@/lib/documents/formats";
+import { processDocument } from "@/lib/documents/process";
 import { idSchema } from "@/lib/validation";
 import { safeFilename } from "@/lib/utils";
 
@@ -21,10 +22,11 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get("file");
     const courseValue = form.get("courseId");
-    if (!(file instanceof File)) throw new ApiError("Choose a PDF to upload.", 422);
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) throw new ApiError("StudyOS accepts PDF documents only.", 422);
+    if (!(file instanceof File)) throw new ApiError("Choose a study file to upload.", 422);
+    const documentType = getSupportedDocumentType(file.name);
+    if (!documentType) throw new ApiError("Upload a PDF, Word document, PowerPoint, spreadsheet, CSV, text, or Markdown file.", 422);
     if (!file.size) throw new ApiError("That file is empty.", 422);
-    if (file.size > MAX_PDF_SIZE_BYTES) throw new ApiError("PDFs must be 15 MB or smaller.", 422);
+    if (file.size > MAX_DOCUMENT_SIZE_BYTES) throw new ApiError("Files must be 15 MB or smaller.", 422);
     const courseId = courseValue ? idSchema.parse(courseValue) : null;
     if (courseId) {
       const { data: course } = await supabase.from("courses").select("id").eq("id", courseId).eq("user_id", user.id).maybeSingle();
@@ -35,17 +37,17 @@ export async function POST(request: Request) {
     const storagePath = `${user.id}/${documentId}/${filename}`;
     const { error: dbError } = await supabase.from("documents").insert({
       id: documentId, user_id: user.id, course_id: courseId, filename, original_filename: file.name.slice(0, 255), storage_path: storagePath,
-      mime_type: "application/pdf", file_size: file.size, processing_status: "uploaded",
+      mime_type: documentType.mimeType, file_size: file.size, processing_status: "uploaded",
     });
     if (dbError) throw new ApiError(dbError.message, 500);
     const bytes = await file.arrayBuffer();
-    const { error: uploadError } = await supabase.storage.from("documents").upload(storagePath, bytes, { contentType: "application/pdf", upsert: false });
+    const { error: uploadError } = await supabase.storage.from("documents").upload(storagePath, bytes, { contentType: documentType.mimeType, upsert: false });
     if (uploadError) {
       await supabase.from("documents").update({ processing_status: "failed", processing_error: "Storage upload failed." }).eq("id", documentId).eq("user_id", user.id);
-      throw new ApiError("The PDF could not be stored. Please try again.", 502);
+      throw new ApiError("The file could not be stored. Please try again.", 502);
     }
     try {
-      await processPdfDocument({ supabase, documentId, userId: user.id, courseId, bytes });
+      await processDocument({ supabase, documentId, userId: user.id, courseId, bytes, format: documentType.format });
     } catch (processingError) {
       const message = processingError instanceof Error ? processingError.message : "Processing failed.";
       return NextResponse.json({ document: { id: documentId, processing_status: "failed", processing_error: message }, warning: message }, { status: 202 });
