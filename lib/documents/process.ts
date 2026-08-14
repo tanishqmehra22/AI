@@ -1,5 +1,5 @@
 import "server-only";
-import { MAX_DOCUMENT_CHUNKS } from "@/lib/constants";
+import { EMBED_REQUEST_INTERVAL_MS, MAX_DOCUMENT_CHUNKS } from "@/lib/constants";
 import { embedText } from "@/lib/ai/client";
 import { chunkPages } from "@/lib/documents/chunk";
 import { extractDocumentPages } from "@/lib/documents/extract";
@@ -24,7 +24,8 @@ export async function processDocument(input: {
     if (chunks.length > MAX_DOCUMENT_CHUNKS) throw new Error("This file is too large to process safely. Upload a smaller excerpt.");
 
     const rows = [];
-    for (const chunk of chunks) {
+    for (const [index, chunk] of chunks.entries()) {
+      if (index > 0) await new Promise((resolve) => setTimeout(resolve, EMBED_REQUEST_INTERVAL_MS));
       const { embedding } = await embedText(chunk.content);
       rows.push({
         document_id: documentId,
