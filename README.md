@@ -127,7 +127,7 @@ Fill `.env.local` with project values. Never use the service-role key in a brows
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key, protected by RLS |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only administrative/background access; not used by standard user routes |
 | `GEMINI_API_KEY` | Server-only key for embeddings and chat; create one free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey), no billing required |
-| `GEMINI_CHAT_MODEL` | Optional chat model override; defaults to `gemini-2.5-flash` |
+| `GEMINI_CHAT_MODEL` | Optional chat model override; defaults to `gemini-flash-lite-latest` |
 | `GEMINI_EMBEDDING_MODEL` | Optional embedding model override; defaults to `gemini-embedding-001` |
 | `NEXT_PUBLIC_APP_URL` | Canonical Vercel URL for metadata, e.g. `https://studyos.vercel.app` |
 

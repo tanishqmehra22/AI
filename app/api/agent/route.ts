@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import { requireApiUser } from "@/lib/auth/api-user";
-import { createGeminiClient, getChatModel } from "@/lib/ai/client";
+import { createGeminiClient, getChatModel, withGeminiRetry } from "@/lib/ai/client";
 import { recordAiRun } from "@/lib/ai/observability";
 import { assistantTools, executeAssistantTool } from "@/lib/ai/tools";
 import { agentRequestSchema } from "@/lib/validation";
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const startedAt = Date.now();
     const ai = createGeminiClient();
     try {
-      const initial = await ai.models.generateContent({
+      const initial = await withGeminiRetry(() => ai.models.generateContent({
         model: getChatModel(),
         contents: [{ role: "user", parts: [{ text: message }] }],
         config: {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
           temperature: 0,
           tools: [{ functionDeclarations: assistantTools }],
         },
-      });
+      }));
       const calls = initial.functionCalls ?? [];
       if (!calls.length) {
         await recordAiRun(supabase, user, { feature: "agent_tools", model: getChatModel(), startedAt, success: true, inputTokens: initial.usageMetadata?.promptTokenCount, outputTokens: initial.usageMetadata?.candidatesTokenCount });
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
         const result = await executeAssistantTool({ user, supabase }, call.name, call.args ?? {});
         results.push({ name: call.name, result });
       }
-      const followUp = await ai.models.generateContent({
+      const followUp = await withGeminiRetry(() => ai.models.generateContent({
         model: getChatModel(),
         contents: [
           { role: "user", parts: [{ text: message }] },
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
           systemInstruction: "Summarize the completed StudyOS tool actions accurately and concisely. If a tool reported no results, say that clearly.",
           temperature: 0.2,
         },
-      });
+      }));
       await recordAiRun(supabase, user, {
         feature: "agent_tools",
         model: getChatModel(),

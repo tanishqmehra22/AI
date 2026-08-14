@@ -21,13 +21,34 @@ export function createGeminiClient() {
   return new GoogleGenAI({ apiKey });
 }
 
+/**
+ * Gemini's free tier enforces a low requests-per-minute cap, so bursts (e.g.
+ * embedding many document chunks back to back) routinely hit 429s under
+ * normal use. Retries with the API's suggested retryDelay, capped so a
+ * single call can't hang indefinitely.
+ */
+export async function withGeminiRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const status = (error as { status?: number } | undefined)?.status;
+      if (status !== 429 || attempt >= retries) throw error;
+      const message = error instanceof Error ? error.message : "";
+      const match = message.match(/"retryDelay":"(\d+)s"/);
+      const suggestedMs = match ? Number(match[1]) * 1000 : 2000 * 2 ** attempt;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(suggestedMs, 15_000)));
+    }
+  }
+}
+
 export async function embedText(input: string) {
   const ai = createGeminiClient();
-  const response = await ai.models.embedContent({
+  const response = await withGeminiRetry(() => ai.models.embedContent({
     model: getEmbeddingModel(),
     contents: [input],
     config: { outputDimensionality: EMBEDDING_DIMENSIONS },
-  });
+  }));
   const embedding = response.embeddings?.[0]?.values;
   if (!embedding) throw new Error("The embedding model returned no vector.");
   return { embedding, usage: {} as AiUsage };

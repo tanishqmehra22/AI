@@ -1,6 +1,6 @@
 import "server-only";
 import type { ZodType } from "zod";
-import { createGeminiClient, getChatModel, type AiUsage } from "@/lib/ai/client";
+import { createGeminiClient, getChatModel, withGeminiRetry, type AiUsage } from "@/lib/ai/client";
 
 export async function generateValidatedJson<T>(input: {
   system: string;
@@ -8,7 +8,7 @@ export async function generateValidatedJson<T>(input: {
   schema: ZodType<T>;
 }) {
   const ai = createGeminiClient();
-  const response = await ai.models.generateContent({
+  const response = await withGeminiRetry(() => ai.models.generateContent({
     model: getChatModel(),
     contents: [{ role: "user", parts: [{ text: input.user }] }],
     config: {
@@ -16,7 +16,7 @@ export async function generateValidatedJson<T>(input: {
       responseMimeType: "application/json",
       temperature: 0.2,
     },
-  });
+  }));
   const raw = response.text;
   if (!raw) throw new Error("The model returned an empty structured response.");
   let parsed: unknown;

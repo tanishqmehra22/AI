@@ -1,6 +1,6 @@
 export const APP_NAME = "StudyOS";
 export const MAX_DOCUMENT_SIZE_BYTES = 15 * 1024 * 1024;
-export const DEFAULT_CHAT_MODEL = "gemini-2.5-flash";
+export const DEFAULT_CHAT_MODEL = "gemini-flash-lite-latest";
 export const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
 export const EMBEDDING_DIMENSIONS = 1536;
 export const MAX_DOCUMENT_CHUNKS = 2_000;
