@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     try {
       const generated = await generateValidatedJson({
         schema: studyPlanOutputSchema,
-        system: `Create a realistic study plan in JSON. Schedule only the given assignments, never invent assignment IDs. Return {summary, days:[{date,focus,sessions:[{assignmentId,title,durationMinutes,rationale}]}]}. Use dates from ${startDate} through ${endDate} only.`,
+        system: `Create a realistic study plan in JSON. Schedule only the given assignments, never invent assignment IDs; copy each assignmentId exactly. Return {summary, days:[{date,focus,sessions:[{assignmentId,title,durationMinutes,rationale}]}]}. Use YYYY-MM-DD dates from ${startDate} through ${endDate} only, at most 14 days, at most 8 sessions per day, and durationMinutes between 15 and 480. Write a summary of at least 10 characters and a rationale of at least 4 characters for every session.`,
         user: `OPEN ASSIGNMENTS:\n${JSON.stringify(assignments)}\n\nPlan from ${startDate} through ${endDate}.`,
       });
       const knownAssignments = new Map(assignments.map((assignment) => [assignment.id, assignment]));
