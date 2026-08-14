@@ -50,7 +50,13 @@ export async function POST(request: Request) {
       await processDocument({ supabase, documentId, userId: user.id, courseId, bytes, format: documentType.format });
     } catch (processingError) {
       const message = processingError instanceof Error ? processingError.message : "Processing failed.";
-      return NextResponse.json({ document: { id: documentId, processing_status: "failed", processing_error: message }, warning: message }, { status: 202 });
+      const { data: document } = await supabase
+        .from("documents")
+        .select("*, courses(name, course_code)")
+        .eq("id", documentId)
+        .eq("user_id", user.id)
+        .single();
+      return NextResponse.json({ document, warning: message }, { status: 202 });
     }
     const { data: document } = await supabase.from("documents").select("*, courses(name, course_code)").eq("id", documentId).eq("user_id", user.id).single();
     return NextResponse.json({ document }, { status: 201 });
