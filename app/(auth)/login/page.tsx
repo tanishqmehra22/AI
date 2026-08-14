@@ -1,2 +1,3 @@
 import { AuthForm } from "@/components/auth/auth-form";
-export default function LoginPage() { return <AuthForm mode="login" />; }
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+export default function LoginPage() { return <AuthForm mode="login" configured={isSupabaseConfigured()} />; }
