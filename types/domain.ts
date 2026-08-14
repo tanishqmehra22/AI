@@ -49,6 +49,20 @@ export interface StudyDocument {
   courses?: Pick<Course, "name" | "course_code"> | null;
 }
 
+export interface Flashcard {
+  id: string;
+  question: string;
+  answer: string;
+  difficulty: Difficulty;
+}
+
+export interface FlashcardSet {
+  id: string;
+  title: string;
+  created_at: string;
+  flashcards: Flashcard[];
+}
+
 export interface Citation {
   documentId: string;
   chunkId: string;
