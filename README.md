@@ -1,5 +1,7 @@
 # StudyOS
 
+**Live app: [ai-nu-mocha.vercel.app](https://ai-nu-mocha.vercel.app)**
+
 StudyOS is an AI-powered academic workspace for university students. It brings course organization, deadline planning, private course files, grounded question-answering, flashcard generation, and controlled task automation into one Next.js application.
 
 It is designed as a full-stack / AI engineering portfolio project: the UI is intentionally polished, while the underlying implementation demonstrates database modeling, Supabase security, document ingestion, pgvector retrieval, streaming, structured outputs, tools, evaluation, and observability.
@@ -137,7 +139,7 @@ Fill `.env.local` with project values. Never use the service-role key in a brows
 | `GEMINI_API_KEY` | Server-only key for embeddings and chat; create one free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey), no billing required |
 | `GEMINI_CHAT_MODEL` | Optional chat model override; defaults to `gemini-flash-lite-latest` |
 | `GEMINI_EMBEDDING_MODEL` | Optional embedding model override; defaults to `gemini-embedding-001` |
-| `NEXT_PUBLIC_APP_URL` | Canonical Vercel URL for metadata, e.g. `https://studyos.vercel.app` |
+| `NEXT_PUBLIC_APP_URL` | Canonical Vercel URL for metadata, e.g. `https://ai-nu-mocha.vercel.app` |
 
 ## Database setup
 
