@@ -196,6 +196,13 @@ Per-user latency and failure rates from real usage are recorded separately in `a
 5. In Supabase Auth, add the Vercel URL and `/auth/callback` redirect URL.
 6. Deploy and test signup, a private course-file upload, a cited question, and an assignment mutation from a second account to confirm isolation.
 
+## Installing as an app
+
+StudyOS ships a web manifest, so any Chromium browser offers to install it. The installed window has no tabs or address bar and gets its own icon in the Dock, Applications, or home screen.
+
+- **From a deployment:** open the site, then use the install control in the address bar (Chrome: **⋮ → Cast, save, and share → Install page as app**). Because the deployment runs independently, the app works with the laptop closed and on a phone.
+- **From a local checkout:** `bash scripts/make-desktop-app.sh` builds `~/Applications/StudyOS.app`. Double-clicking it starts the production server if the port is idle and opens a chromeless window. It builds automatically on first launch; run `pnpm build` again after changing code, since `next start` serves the last build. Launcher output goes to `~/Library/Logs/StudyOS.log`. Pass a different destination as the first argument, and set `PORT` to use another port.
+
 ## Technical decisions
 
 - **Monolithic Next.js:** a single App Router codebase is easy to deploy and explain while retaining server-side boundaries for secrets and authorization.
